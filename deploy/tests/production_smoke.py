@@ -39,6 +39,15 @@ def main():
         def dc(*args,**kwargs):return subprocess.run([*cmd,*args],env=env,check=True,**kwargs)
         try:
             dc('config','--quiet')
+            # Provision/validate the real edge config without starting HTTPS or ordering certificates.
+            adapted=dc('run','--rm','--no-deps','edge','caddy','adapt',
+                '--config','/etc/caddy/Caddyfile','--adapter','caddyfile','--validate',
+                stdout=subprocess.PIPE,text=True)
+            policies=json.loads(adapted.stdout)['apps']['tls']['automation']['policies']
+            assert len(policies)==1
+            assert policies[0]['issuers']==[{'module':'acme',
+                'ca':'https://acme-v02.api.letsencrypt.org/directory','email':settings['acme_email']}]
+            print("Production TLS configuration validated: Let's Encrypt is the sole issuer.",flush=True)
             dc('build','migrate','web')
             dc('up','-d','--wait','--wait-timeout','180','db')
             dc('run','--rm','--no-deps','migrate')

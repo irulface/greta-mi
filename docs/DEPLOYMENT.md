@@ -29,7 +29,7 @@ Saat deployment berlangsung, Anda diminta mengisi:
 
 1. Hostname/IP VPS, default `mi.greta.id`; user SSH, default `root`; port SSH, default `22`.
 2. Password VPS melalui prompt OpenSSH. User selain root juga diminta password `sudo` bila diperlukan. Password SSH tidak dicatat atau disimpan script. Host key diverifikasi oleh OpenSSH; jangan menerima fingerprint yang tidak cocok dengan informasi VPS Anda.
-3. Pada instalasi pertama: **email/user admin aplikasi** dan password minimal 14 karakter, email sertifikat, user/nama database serta password database. Password database boleh dikosongkan untuk generate otomatis.
+3. Pada instalasi pertama: **email/user admin aplikasi** dan password minimal 14 karakter, email akun ACME untuk sertifikat Let's Encrypt, user/nama database serta password database. Password database boleh dikosongkan untuk generate otomatis.
 4. Pengaturan SMTP opsional: host, port, username, password, sender, dan SSL/STARTTLS. Default host `asia.emailarray.com`, port `465`, username/sender `admin@greta.id`, SSL; password tetap diminta di terminal dan tidak disalin dari komputer lokal.
 
 Password dengan `$`, quote, `#`, backslash, dan tanda baca lain dipertahankan secara literal. Login aplikasi menggunakan **email**, sesuai implementasi auth Greta. Bootstrap Admin tidak dibuat ulang pada update dan password yang sudah tersimpan tidak direset.
@@ -65,7 +65,7 @@ flowchart LR
   Agent[Autonomous agent worker] --> DB
 ```
 
-Compose production terpisah di `deploy/compose.production.yaml`. Hanya Caddy mempublikasikan port host. API, database, web internal, dan kedua worker berada pada jaringan Docker privat. Caddy mengurus penerbitan/perpanjangan sertifikat serta redirect HTTP ke HTTPS, sesuai [Automatic HTTPS](https://caddyserver.com/docs/automatic-https).
+Compose production terpisah di `deploy/compose.production.yaml`. Hanya Caddy mempublikasikan port host. API, database, web internal, dan kedua worker berada pada jaringan Docker privat. HTTPS menggunakan **Let's Encrypt**: `deploy/Caddyfile` menetapkan satu issuer ACME dengan endpoint production `https://acme-v02.api.letsencrypt.org/directory`, sesuai [konfigurasi issuer ACME Caddy](https://caddyserver.com/docs/caddyfile/directives/tls#acme). Email akun diambil dari `ACME_EMAIL`, yang diminta saat instalasi pertama. Caddy mengurus penerbitan/perpanjangan sertifikat serta redirect HTTP ke HTTPS secara otomatis; sertifikat baru diterbitkan saat deployment berjalan dan domain dapat divalidasi melalui VPS. Sertifikat dan akun ACME disimpan pada volume persisten `greta-mi_caddy_data`.
 
 API menunggu migrasi sukses; worker/web menunggu API sehat. Dependency menggunakan kondisi readiness sebagaimana [panduan startup Compose](https://docs.docker.com/compose/how-tos/startup-order/). Mode production mematikan demo login dan memakai cookie Secure/HTTP-only. Bootstrap memverifikasi mode ini dan header commit `X-Greta-Release` melalui URL HTTPS. Domain yang masih menunjuk versi/server lain tidak dianggap deployment berhasil.
 
@@ -129,4 +129,4 @@ python3 -m unittest discover -s deploy/tests -v
 python3 deploy/tests/production_smoke.py
 ```
 
-Workflow **Production deployment checks** pada GitHub menjalankan pengujian script dan membangun container production di Ubuntu. Smoke test mencakup migrasi, PostgreSQL non-superuser, frontend, production login, cookie Secure, CSRF, password dengan karakter khusus, dan restart. Workflow ini tidak terhubung ke VPS dan tidak melakukan deployment production atau pengiriman email. Uji DNS/TLS serta login SSH/sudo aktual tetap dilakukan saat Anda menjalankan deployment VPS.
+Workflow **Production deployment checks** pada GitHub menjalankan pengujian script dan membangun container production di Ubuntu. Smoke test memvalidasi konfigurasi dengan binary Caddy dari image production dan memastikan Let's Encrypt menjadi satu-satunya issuer, tanpa menjalankan server HTTPS atau meminta sertifikat. Test juga mencakup migrasi, PostgreSQL non-superuser, frontend, production login, cookie Secure, CSRF, password dengan karakter khusus, dan restart. Workflow ini tidak terhubung ke VPS dan tidak melakukan deployment production atau pengiriman email. Uji DNS/TLS serta login SSH/sudo aktual tetap dilakukan saat Anda menjalankan deployment VPS.
