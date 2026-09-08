@@ -311,11 +311,13 @@ def preflight_ports(first_install):
                 raise DeploymentError('Port ' + str(port) + ' sudah dipakai. Bootstrap tidak akan menghentikan service lain.') from exc
 
 
-def verify_https(domain):
+def verify_https(domain, sha):
     last = None
     for _ in range(24):
         try:
             with urllib.request.urlopen('https://' + domain + '/health/ready', timeout=8) as response:
+                if response.headers.get('X-Greta-Release') != sha:
+                    raise DeploymentError('Domain belum menyajikan commit yang baru dideploy.')
                 if json.load(response) != {'status': 'ok', 'database': 'postgresql'}:
                     raise DeploymentError('Health response tidak sesuai.')
             with urllib.request.urlopen('https://' + domain + '/api/v1/bootstrap', timeout=8) as response:
@@ -350,7 +352,7 @@ def activate(release, settings, previous):
     # Migration has already completed explicitly above; do not run it a second time.
     compose(release, 'up', '-d', '--no-deps', '--wait', '--wait-timeout', '180', 'api')
     compose(release, 'up', '-d', '--no-deps', '--wait', '--wait-timeout', '180', 'web', 'worker', 'agent', 'edge')
-    verify_https(settings['domain'])
+    verify_https(settings['domain'], release.name)
     current = ROOT / 'current'
     temp = ROOT / ('current-' + secrets.token_hex(4))
     temp.symlink_to(release); os.replace(temp, current)
@@ -383,7 +385,7 @@ def main(argv=None):
             elif args.action == 'status': compose(previous, 'ps')
             elif args.action == 'stop': compose(previous, 'stop')
             elif args.action == 'start':
-                compose(previous, 'start'); verify_https(json.loads((CONFIG / 'settings.json').read_text())['domain'])
+                compose(previous, 'start'); verify_https(json.loads((CONFIG / 'settings.json').read_text())['domain'], previous.name)
             return
         repo = repo_name(args.repo)
         print('Deploy ' + repo + ' @ ' + args.commit + ' ke https://' + args.domain)

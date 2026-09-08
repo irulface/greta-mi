@@ -67,7 +67,7 @@ flowchart LR
 
 Compose production terpisah di `deploy/compose.production.yaml`. Hanya Caddy mempublikasikan port host. API, database, web internal, dan kedua worker berada pada jaringan Docker privat. Caddy mengurus penerbitan/perpanjangan sertifikat serta redirect HTTP ke HTTPS, sesuai [Automatic HTTPS](https://caddyserver.com/docs/automatic-https).
 
-API menunggu migrasi sukses; worker/web menunggu API sehat. Dependency menggunakan kondisi readiness sebagaimana [panduan startup Compose](https://docs.docker.com/compose/how-tos/startup-order/). Mode production mematikan demo login dan memakai cookie Secure/HTTP-only. Bootstrap memverifikasi mode ini melalui URL HTTPS, bukan hanya status container.
+API menunggu migrasi sukses; worker/web menunggu API sehat. Dependency menggunakan kondisi readiness sebagaimana [panduan startup Compose](https://docs.docker.com/compose/how-tos/startup-order/). Mode production mematikan demo login dan memakai cookie Secure/HTTP-only. Bootstrap memverifikasi mode ini dan header commit `X-Greta-Release` melalui URL HTTPS. Domain yang masih menunjuk versi/server lain tidak dianggap deployment berhasil.
 
 - `/opt/greta-mi/source.git`: cache source GitHub.
 - `/opt/greta-mi/releases/<SHA>`: checkout commit immutable.

@@ -152,6 +152,18 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual((root/'current').resolve(),old)
             self.assertEqual(json.loads((root/'deployment.json').read_text())['stage'],'starting')
 
+    def test_https_verification_requires_the_expected_release_and_production_mode(self):
+        sha='b'*40
+        for wrong_sha,demo in [(False,False),(True,False),(False,True)]:
+            def response(url,timeout):
+                body={'status':'ok','database':'postgresql'} if '/health/' in url else {'demo':demo} if '/bootstrap' in url else {}
+                item=io.BytesIO(json.dumps(body).encode());item.headers={'X-Greta-Release':'a'*40 if wrong_sha else sha};item.status=200
+                return item
+            with patch.object(boot.urllib.request,'urlopen',side_effect=response),patch.object(boot.time,'sleep'):
+                if wrong_sha or demo:
+                    with self.assertRaises(boot.DeploymentError):boot.verify_https('mi.greta.id',sha)
+                else:boot.verify_https('mi.greta.id',sha)
+
     def test_dry_run_performs_no_publish_or_ssh(self):
         with patch.object(release,'check_source'),patch.object(release,'publish') as publish,patch.object(release,'deploy') as deploy:
             release.main(['deploy','--dry-run'])
@@ -172,6 +184,8 @@ class ComposeTests(unittest.TestCase):
             self.assertEqual(unquote(urlparse(app['DATABASE_URL']).password),s['db_password'])
             self.assertEqual(app['APP_ENV'],'production');self.assertEqual(app['PUBLIC_APP_URL'],'https://mi.greta.id')
             for name in ['api','db','web','worker','agent','migrate']:self.assertFalse(services[name].get('ports'))
+            self.assertEqual(Path(services['migrate']['build']['context']).resolve(),ROOT/'backend')
+            self.assertEqual(Path(services['web']['build']['context']).resolve(),ROOT)
             self.assertEqual(services['db']['environment']['POSTGRES_USER'],'postgres')
             self.assertNotIn('POSTGRES_PASSWORD',app)
             self.assertEqual(services['api']['depends_on']['migrate']['condition'],'service_completed_successfully')

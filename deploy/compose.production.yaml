@@ -74,6 +74,8 @@ services:
     image: greta-mi-web:${GRETA_RELEASE:?Set the exact Git commit SHA}
     build:
       context: ..
+      args:
+        GRETA_RELEASE: ${GRETA_RELEASE:?Set the exact Git commit SHA}
     depends_on:
       api: {condition: service_healthy}
     healthcheck:

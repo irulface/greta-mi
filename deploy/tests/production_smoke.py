@@ -49,7 +49,9 @@ def main():
                 return urllib.request.urlopen(urllib.request.Request(origin+path,
                     data=json.dumps(body).encode() if body is not None else None,
                     headers={'Content-Type':'application/json',**(headers or {})}),timeout=15)
-            with request('/health/ready') as response:assert json.load(response)=={'status':'ok','database':'postgresql'}
+            with request('/health/ready') as response:
+                assert json.load(response)=={'status':'ok','database':'postgresql'}
+                assert response.headers.get('X-Greta-Release')==prefix
             with request('/api/v1/bootstrap') as response:assert json.load(response)['demo'] is False
             with request('/') as response:assert b'<html' in response.read().lower()
             with request('/api/v1/auth/login',{'email':settings['admin_email'],'password':settings['admin_password']}, {'Origin':origin}) as response:
