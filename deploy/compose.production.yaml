@@ -1,0 +1,109 @@
+name: greta-mi
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app: &app
+  image: greta-mi-api:${GRETA_RELEASE:?Set the exact Git commit SHA}
+  env_file:
+    - path: ${GRETA_CONFIG_DIR:-/etc/greta-mi}/app.env
+      format: raw
+  volumes:
+    - app_data:/data
+  restart: unless-stopped
+  init: true
+  security_opt: ["no-new-privileges:true"]
+  logging: *logging
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    env_file:
+      - path: ${GRETA_CONFIG_DIR:-/etc/greta-mi}/db.env
+        format: raw
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/10-greta.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    logging: *logging
+  migrate:
+    <<: *app
+    build:
+      context: ../backend
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db: {condition: service_healthy}
+  api:
+    <<: *app
+    env_file:
+      - path: ${GRETA_CONFIG_DIR:-/etc/greta-mi}/app.env
+        format: raw
+      - path: ${GRETA_CONFIG_DIR:-/etc/greta-mi}/bootstrap.env
+        format: raw
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*", "--no-access-log"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4).read()"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+  worker:
+    <<: *app
+    command: ["python", "-m", "app.ingestion"]
+    depends_on:
+      api: {condition: service_healthy}
+    stop_grace_period: 60s
+  agent:
+    <<: *app
+    command: ["python", "-m", "app.agent_worker"]
+    depends_on:
+      api: {condition: service_healthy}
+    stop_grace_period: 60s
+  web:
+    image: greta-mi-web:${GRETA_RELEASE:?Set the exact Git commit SHA}
+    build:
+      context: ..
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    logging: *logging
+  edge:
+    image: caddy:2-alpine
+    env_file:
+      - path: ${GRETA_CONFIG_DIR:-/etc/greta-mi}/edge.env
+        format: raw
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web: {condition: service_healthy}
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  postgres_data:
+    name: ${GRETA_VOLUME_PREFIX:-greta-mi}_postgres_data
+  app_data:
+    name: ${GRETA_VOLUME_PREFIX:-greta-mi}_app_data
+  caddy_data:
+    name: ${GRETA_VOLUME_PREFIX:-greta-mi}_caddy_data
+  caddy_config:
+    name: ${GRETA_VOLUME_PREFIX:-greta-mi}_caddy_config

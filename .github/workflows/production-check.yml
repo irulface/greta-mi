@@ -1,0 +1,27 @@
+name: Production deployment checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  production:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check release and bootstrap contracts
+        run: |
+          python3 scripts/release.py check
+          python3 -m unittest discover -s deploy/tests -v
+          bash -n scripts/deploy-production.sh scripts/publish-github.sh deploy/init-db.sh
+      - name: Build and exercise the production containers
+        run: python3 deploy/tests/production_smoke.py

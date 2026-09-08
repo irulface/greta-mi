@@ -1,0 +1,15 @@
+[Unit]
+Description=Greta Market Intelligence API
+After=network.target
+[Service]
+Type=simple
+User=greta
+Group=greta
+WorkingDirectory=/srv/market-intelligence/backend
+EnvironmentFile=/etc/greta.env
+ExecStart=/srv/market-intelligence/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
+Restart=on-failure
+PrivateTmp=true
+NoNewPrivileges=true
+[Install]
+WantedBy=multi-user.target

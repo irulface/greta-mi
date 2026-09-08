@@ -1,0 +1,17 @@
+[Unit]
+Description=Greta Autonomous Intelligence Agent
+After=greta-api.service
+Requires=greta-api.service
+[Service]
+Type=simple
+User=greta
+Group=greta
+WorkingDirectory=/srv/market-intelligence/backend
+EnvironmentFile=/etc/greta.env
+ExecStart=/srv/market-intelligence/backend/.venv/bin/python -m app.agent_worker
+Restart=on-failure
+PrivateTmp=true
+NoNewPrivileges=true
+MemoryMax=1G
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,73 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: greta
+      POSTGRES_USER: greta
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greta -d greta"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+  api:
+    build: ./backend
+    environment: &app_env
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg://greta:${POSTGRES_PASSWORD}@db:5432/greta
+      APP_MASTER_KEY: ${APP_MASTER_KEY:?Set APP_MASTER_KEY}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@greta.local}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Set a strong initial admin password}
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
+      MARKET_API_ALLOWED_HOSTS: ${MARKET_API_ALLOWED_HOSTS:-}
+      ENTERPRISE_ALLOWED_HOSTS: ${ENTERPRISE_ALLOWED_HOSTS:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-true}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-15}
+      DATA_DIR: /data
+      REPOSITORY_ROOT: /data/repository
+    volumes:
+      - app_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.ingestion"]
+    environment: *app_env
+    volumes:
+      - app_data:/data
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+  agent:
+    build: ./backend
+    command: ["python", "-m", "app.agent_worker"]
+    environment: *app_env
+    volumes:
+      - app_data:/data
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+  web:
+    build: .
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  app_data:
